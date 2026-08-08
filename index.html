@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Veut tu m'aimer pour la vie ?</title>
+<style>
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+    background: #ffffff;
+    overflow-x: hidden;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    gap: 28px;
+    padding: 32px 16px;
+    font-family: "Trebuchet MS", "Segoe UI", Helvetica, Arial, sans-serif;
+    text-align: center;
+  }
+
+  #gif {
+    max-width: min(420px, 85vw);
+    width: 100%;
+    height: auto;
+    border-radius: 16px;
+    display: block;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(1.5rem, 5.5vw, 2.6rem);
+    font-weight: 700;
+    color: #1b1b1b;
+    line-height: 1.25;
+  }
+
+  #buttons {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    flex-wrap: wrap;
+    min-height: 90px;
+  }
+
+  button {
+    font-family: inherit;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    color: #ffffff;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    padding: 16px 34px;
+    font-size: 1.15rem;
+    text-transform: uppercase;
+  }
+
+  #yes {
+    background: #22c55e;
+    box-shadow: 0 8px 20px rgba(34, 197, 94, 0.35);
+    /* La taille est pilotée par font-size : le bouton grossit sans rien recouvrir. */
+    padding: 0.75em 1.9em;
+    border-radius: 0.6em;
+    max-width: 92vw;
+    transition: font-size 0.3s cubic-bezier(0.2, 1.2, 0.4, 1), box-shadow 0.25s ease;
+  }
+
+  #yes:hover { box-shadow: 0 12px 28px rgba(34, 197, 94, 0.5); }
+  #yes:active { filter: brightness(0.94); }
+
+  #no {
+    background: #ef4444;
+    box-shadow: 0 8px 20px rgba(239, 68, 68, 0.35);
+    transition: top 0.18s ease, left 0.18s ease;
+  }
+
+  #no.fleeing {
+    position: fixed;
+    margin: 0;
+    z-index: 5;
+  }
+
+  #yes.celebrating {
+    font-size: clamp(1.4rem, 6.5vw, 3.2rem);
+    letter-spacing: 2px;
+    box-shadow: 0 14px 40px rgba(34, 197, 94, 0.45);
+    cursor: default;
+    animation: pop 0.6s cubic-bezier(0.2, 1.4, 0.4, 1);
+  }
+
+  @keyframes pop {
+    0%   { transform: scale(0.6); }
+    60%  { transform: scale(1.12); }
+    100% { transform: scale(1); }
+  }
+
+  #confetti {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .heart {
+    position: fixed;
+    bottom: -60px;
+    pointer-events: none;
+    user-select: none;
+    z-index: 9;
+    animation: rise linear forwards;
+  }
+
+  @keyframes rise {
+    0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(-115vh) rotate(var(--spin, 40deg)); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+
+  <img id="gif"
+       src="https://media3.giphy.com/media/v1.Y2lkPTZjMDliOTUyOGd0ZzJqOWNhdzg2dGJsdXMxYXNrczN0M3N0b21iNzgwMmF2ZGtjeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/f5vXCvhSJsZxu/giphy.gif"
+       alt="Câlin">
+
+  <h1>veut tu m'aimer pour la vie ?</h1>
+
+  <div id="buttons">
+    <button id="yes" type="button">OUI</button>
+    <button id="no" type="button">NON</button>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  var yes = document.getElementById('yes');
+  var no = document.getElementById('no');
+  var question = document.querySelector('h1');
+  var canvas = document.getElementById('confetti');
+  var ctx = canvas.getContext('2d');
+
+  /* ---------- Le bouton NON : impossible à cliquer ---------- */
+
+  var yesSize = 1.15; // en rem
+  var lastFlee = 0;
+
+  function flee(event, grow) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    // Un clic déclenche plusieurs évènements : on n'en compte qu'un.
+    var now = Date.now();
+    var isNewAttempt = now - lastFlee > 250;
+    lastFlee = now;
+    if (!isNewAttempt) return;
+
+    var rect = no.getBoundingClientRect();
+
+    if (!no.classList.contains('fleeing')) {
+      // Fige la taille et sort le bouton du flux avant de le déplacer.
+      no.style.width = rect.width + 'px';
+      no.style.height = rect.height + 'px';
+      no.classList.add('fleeing');
+    }
+
+    var margin = 12;
+    var maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+    var maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
+    var yesRect = yes.getBoundingClientRect();
+    var left, top;
+
+    // Cherche une position qui ne recouvre pas le bouton OUI.
+    for (var i = 0; i < 30; i++) {
+      left = margin + Math.random() * (maxLeft - margin);
+      top = margin + Math.random() * (maxTop - margin);
+
+      var overlapsYes =
+        left < yesRect.right + 20 &&
+        left + rect.width > yesRect.left - 20 &&
+        top < yesRect.bottom + 20 &&
+        top + rect.height > yesRect.top - 20;
+
+      var farEnough =
+        Math.abs(left - rect.left) > rect.width / 2 ||
+        Math.abs(top - rect.top) > rect.height / 2;
+
+      if (!overlapsYes && farEnough) break;
+    }
+
+    no.style.left = left + 'px';
+    no.style.top = top + 'px';
+
+    // Chaque tentative fait grossir le bouton OUI.
+    if (grow) {
+      yesSize = Math.min(yesSize * 1.22, 4.5);
+      yes.style.fontSize = yesSize + 'rem';
+    }
+  }
+
+  ['click', 'mousedown', 'mouseover', 'touchstart', 'pointerdown', 'focus'].forEach(function (type) {
+    no.addEventListener(type, function (event) { flee(event, true); }, { passive: false });
+  });
+
+  // Garde le bouton dans l'écran quand la fenêtre change de taille.
+  window.addEventListener('resize', function () {
+    if (no.classList.contains('fleeing')) {
+      lastFlee = 0;
+      flee(null, false);
+    }
+  });
+
+  /* ---------- Le bouton OUI : confettis et coeurs ---------- */
+
+  var hearts = ['❤️', '💖', '💕', '💗', '💘', '💞', '😍', '🥰'];
+
+  function spawnHearts(count) {
+    for (var i = 0; i < count; i++) {
+      (function (index) {
+        setTimeout(function () {
+          var heart = document.createElement('div');
+          heart.className = 'heart';
+          heart.textContent = hearts[Math.floor(Math.random() * hearts.length)];
+          heart.style.left = Math.random() * 96 + 'vw';
+          heart.style.fontSize = (18 + Math.random() * 42) + 'px';
+          heart.style.setProperty('--spin', (Math.random() * 160 - 80) + 'deg');
+          var duration = 4 + Math.random() * 4;
+          heart.style.animationDuration = duration + 's';
+          document.body.appendChild(heart);
+          setTimeout(function () { heart.remove(); }, duration * 1000);
+        }, index * 90);
+      })(i);
+    }
+  }
+
+  var colors = ['#ef4444', '#f97316', '#facc15', '#22c55e', '#3b82f6', '#a855f7', '#ec4899'];
+  var pieces = [];
+  var running = false;
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  function addConfetti(count) {
+    for (var i = 0; i < count; i++) {
+      pieces.push({
+        x: Math.random() * canvas.width,
+        y: -20 - Math.random() * canvas.height * 0.6,
+        w: 6 + Math.random() * 8,
+        h: 8 + Math.random() * 12,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: -1.5 + Math.random() * 3,
+        vy: 2 + Math.random() * 3.5,
+        angle: Math.random() * Math.PI * 2,
+        spin: -0.15 + Math.random() * 0.3
+      });
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    for (var i = pieces.length - 1; i >= 0; i--) {
+      var p = pieces[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.angle += p.spin;
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+
+      if (p.y > canvas.height + 40) pieces.splice(i, 1);
+    }
+
+    if (pieces.length > 0) {
+      requestAnimationFrame(draw);
+    } else {
+      running = false;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
+  var celebrated = false;
+
+  function celebrate() {
+    if (celebrated) return;
+    celebrated = true;
+
+    yes.textContent = 'FÉLICITATION';
+    yes.style.fontSize = '';
+    yes.classList.add('celebrating');
+    question.textContent = 'Pour la vie 💍';
+    no.style.display = 'none';
+
+    addConfetti(220);
+    spawnHearts(40);
+
+    if (!running) {
+      running = true;
+      requestAnimationFrame(draw);
+    }
+
+    // Vagues supplémentaires pour que la fête dure.
+    var waves = 0;
+    var interval = setInterval(function () {
+      addConfetti(90);
+      spawnHearts(18);
+      if (!running) {
+        running = true;
+        requestAnimationFrame(draw);
+      }
+      if (++waves >= 6) clearInterval(interval);
+    }, 1200);
+  }
+
+  yes.addEventListener('click', celebrate);
+})();
+</script>
+</body>
+</html>
